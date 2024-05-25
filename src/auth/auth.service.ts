@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/services/users.service';
-import { User } from '../users/models';
-import { contentSecurityPolicy } from 'helmet';
+import { User } from '../users/entities';
+
+type LoginType = 'jwt' | 'basic' | 'default';
 
 @Injectable()
 export class AuthService {
@@ -11,28 +12,33 @@ export class AuthService {
     private jwtService: JwtService
   ) {}
 
-  validateUser(name: string, password: string): any {
-    const user = this.usersService.findOne(name);
+  async validateUser(name: string, password: string): Promise<User | null> {
+    const user = await this.usersService.findOne(name);
 
-    if (user) {
+    // Create new user if not exist
+    if (!user) {
+      return await this.usersService.createOne({ name, password });
+    }
+
+    if (user.password === password) {
       return user;
     }
 
-    return this.usersService.createOne({ name, password })
+    return null;
   }
 
-  login(user: User, type) {
+  async login(user: { name: string; password: string }, type: LoginType) {
     const LOGIN_MAP = {
       jwt: this.loginJWT,
       basic: this.loginBasic,
       default: this.loginJWT,
-    }
-    const login = LOGIN_MAP[ type ]
+    };
+    const login = (LOGIN_MAP[type] ?? LOGIN_MAP.default).bind(this);
 
-    return login ? login(user) : LOGIN_MAP.default(user);
+    return await login(user);
   }
 
-  loginJWT(user: User) {
+  async loginJWT(user: User) {
     const payload = { username: user.name, sub: user.id };
 
     return {
@@ -41,9 +47,8 @@ export class AuthService {
     };
   }
 
-  loginBasic(user: User) {
+  async loginBasic(user: User) {
     // const payload = { username: user.name, sub: user.id };
-    console.log(user);
 
     function encodeUserToken(user) {
       const { id, name, password } = user;
@@ -57,7 +62,4 @@ export class AuthService {
       access_token: encodeUserToken(user),
     };
   }
-
-
-
 }
